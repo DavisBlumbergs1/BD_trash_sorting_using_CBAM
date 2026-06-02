@@ -1,0 +1,42 @@
+# Ultralytics YOLO26 - Early-Stage Trash Architecture Blueprint (CBAM in HEAD)
+
+nc: 3
+end2end: True
+reg_max: 1
+
+scales:
+  n: [0.50, 0.25, 1024]
+
+backbone:
+  - [-1, 1, Conv, [64, 3, 2]]          # 0-P1/2
+  - [-1, 1, Conv, [128, 3, 2]]         # 1-P2/4
+  - [-1, 2, C3k2, [256, False, 0.25]]
+  - [-1, 1, Conv, [256, 3, 2]]         # 3-P3/8
+  - [-1, 2, C3k2, [512, False, 0.25]]
+  - [-1, 1, Conv, [512, 3, 2]]         # 5-P4/16
+  - [-1, 2, C3k2, [512, True]]
+  - [-1, 1, Conv, [1024, 3, 2]]        # 7-P5/32
+  - [-1, 2, C3k2, [1024, True]]
+  - [-1, 1, SPPF, [1024, 5, 3, True]]  # 9
+  - [-1, 2, C2PSA, [1024]]             # 10 
+
+head:
+  - [-1, 1, nn.Upsample, [None, 2, "nearest"]] # 11
+  - [[-1, 6], 1, Concat, [1]]                  # 12 - cat backbone P4
+  - [-1, 2, C3k2, [512, True]]                 # 13
+  - [-1, 1, CBAM, []]                          # 14 - FIXED Brackets (Refines medium objects)
+
+  - [-1, 1, nn.Upsample, [None, 2, "nearest"]] # 15
+  - [[-1, 4], 1, Concat, [1]]                  # 16 - cat backbone P3
+  - [-1, 2, C3k2, [256, True]]                 # 17 
+  - [-1, 1, CBAM, []]                          # 18 - FIXED Brackets (Refines labels/caps)
+
+  - [-1, 1, Conv, [256, 3, 2]]                 # 19
+  - [[-1, 14], 1, Concat, [1]]                 # 20 - FIXED Routing: Connects layer 19 to refined P4 (Layer 14)
+  - [-1, 2, C3k2, [512, True]]                 # 21 
+
+  - [-1, 1, Conv, [512, 3, 2]]                 # 22
+  - [[-1, 10], 1, Concat, [1]]                 # 23 - FIXED Routing: Concat with Layer 10 (Backbone C2PSA)
+  - [-1, 1, C3k2, [1024, True, 0.5, True]]     # 24
+
+  - [[18, 21, 24], 1, Detect, [nc]]            # 25 - Outputs: P3 (18), P4 (21), P5 (24)
